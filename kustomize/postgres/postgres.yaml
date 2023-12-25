@@ -3,8 +3,8 @@ kind: PostgresCluster
 metadata:
   name: hippo
 spec:
-  image: registry.developers.crunchydata.com/crunchydata/crunchy-postgres:ubi8-15.5-0
-  postgresVersion: 15
+  image: registry.developers.crunchydata.com/crunchydata/crunchy-postgres:ubi8-14.7-0
+  postgresVersion: 14
   instances:
     - name: instance1
       dataVolumeClaimSpec:
@@ -13,9 +13,19 @@ spec:
         resources:
           requests:
             storage: 1Gi
+  patroni:
+    dynamicConfiguration:
+      postgresql:
+        parameters:
+          TimeZone: "Asia/Riyadh"
+          max_connections: "500"
+        pg_hba:
+          - "hostnossl all all 0.0.0.0/0 trust" # this line enabled logical replication with programmatic access
+          - "local all all trust"
+          - "host all all ::1/128 trust"
   backups:
     pgbackrest:
-      image: registry.developers.crunchydata.com/crunchydata/crunchy-pgbackrest:ubi8-2.47-2
+      image: registry.developers.crunchydata.com/crunchydata/crunchy-pgbackrest:ubi8-2.40-1
       repos:
       - name: repo1
         volume:
@@ -25,3 +35,8 @@ spec:
             resources:
               requests:
                 storage: 1Gi
+  users:
+  - name: 'hippo'
+    databases:
+      - hippo
+

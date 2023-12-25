@@ -1,0 +1,76 @@
+apiVersion: postgres-operator.crunchydata.com/v1beta1
+kind: PostgresCluster
+metadata:
+  name: hippo
+  namespace: postgres-operator
+spec:
+  image: registry.developers.crunchydata.com/crunchydata/crunchy-postgres:ubi8-14.7-0
+  postgresVersion: 14
+  dataSource:
+    postgresCluster:
+      clusterName: hippo
+      repoName: repo1
+  instances:
+    - name: database
+      replicas: 3
+      minAvailable: 1
+      dataVolumeClaimSpec:
+        accessModes:
+          - "ReadWriteOnce"
+        resources:
+          requests:
+            storage: 1Gi
+  service:
+    metadata:
+      labels:
+        name: postgres-operator-service
+    type: NodePort
+    nodePort: 32000
+
+  backups:
+    pgbackrest:
+      image: registry.developers.crunchydata.com/crunchydata/crunchy-pgbackrest:ubi8-2.40-1
+      configuration:
+        - secret:
+            name: pgo-s3-creds
+      manual:
+        repoName: repo1
+      global:
+        repo1-retention-full: "10"
+        repo1-retention-full-type: "count"
+        repo1-path: /pgbackrest/postgres-operator/hippo/repo1
+      repos:
+        - name: repo1
+          s3:
+            bucket: "nearpay-database-staging-backup"
+            endpoint: "s3.me-south-1.amazonaws.com"
+            region: "me-south-1"
+  proxy:
+    pgBouncer:
+      image: registry.developers.crunchydata.com/crunchydata/crunchy-pgbouncer:ubi8-1.17-1
+      replicas: 2
+      minAvailable: 1
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 1
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    postgres-operator.crunchydata.com/cluster: hippo
+                    postgres-operator.crunchydata.com/role: pgbouncer
+  patroni:
+    dynamicConfiguration:
+      postgresql:
+        parameters:
+          TimeZone: "Asia/Riyadh"
+        pg_hba:
+          - "hostnossl all all 0.0.0.0/0 trust" # this line enabled logical replication with programmatic access
+          - "local all all trust"
+          - "host all all ::1/128 trust"
+
+  monitoring:
+    pgmonitor:
+      exporter:
+        image: registry.developers.crunchydata.com/crunchydata/crunchy-postgres-exporter:ubi8-5.3.0-0
